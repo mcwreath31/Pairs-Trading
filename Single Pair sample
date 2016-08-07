@@ -1,0 +1,84 @@
+##Get Stock Symbols
+
+library(quantmod)
+symbols <- c("AAPL", "DELL")
+getSymbols(symbols)
+
+##define training set
+startT <- "2007-01-01"
+endT <- "2009-01-01"
+rangeT <- paste(startT,"::", endT, sep="")
+tAAPL   <- AAPL[,6][rangeT]
+tDELL   <- DELL[,6][rangeT]
+
+##define out of sample set 
+startO  <- "2009-02-01"
+endO    <- "2010-12-01"
+rangeO  <- paste(startO,"::",endO,sep ="")
+oAAPL   <- AAPL[,6][rangeO]
+oDELL   <- DELL[,6][rangeO]
+
+#compute price differences on in-sample data
+pdtAAPL <- diff(tAAPL)[-1]
+pdtDELL <- diff(tDELL)[-1]
+
+#build the model
+model  <- lm(pdtAAPL ~ pdtDELL - 1)
+
+#extract the hedge ratio
+hr     <- as.numeric(model$coefficients[1])
+
+#spread price (in-sample)
+spreadT <- tAAPL - hr * tDELL
+
+#compute statistics of the spread
+meanT    <- as.numeric(mean(spreadT,na.rm=TRUE))
+sdT      <- as.numeric(sd(spreadT,na.rm=TRUE))
+upperThr <- meanT + 1 * sdT
+lowerThr <- meanT - 1 * sdT
+
+#visualize the in-sample spread + stats
+plot(spreadT, main = "AAPL vs. DELL spread (in-sample period)")
+abline(h = meanT, col = "red", lwd =2)
+abline(h = meanT + 1 * sdT, col = "blue", lwd=2)
+abline(h = meanT - 1 * sdT, col = "blue", lwd=2)
+
+
+hist(spreadT, col = "blue", breaks = 100, main = "Spread Histogram (AAPL vs. DELL)")
+abline(v = meanT, col = "red", lwd = 2)
+
+
+indSell <- which(spreadT >= meanT + sdT)
+indBuy  <- which(spreadT <= meanT - sdT)
+
+
+spreadL  <- length(spreadT)
+pricesB  <- c(rep(NA,spreadL))
+pricesS  <- c(rep(NA,spreadL))
+sp       <- as.numeric(spreadT)
+tradeQty <- 100
+totalP   <- 0
+
+for(i in 1:spreadL) {
+  spTemp <- sp[i]
+  if(spTemp < lowerThr) {
+    if(totalP <= 0){
+      totalP     <- totalP + tradeQty
+      pricesB[i] <- spTemp
+    }
+  } else if(spTemp > upperThr) {
+    if(totalP >= 0){
+      totalP <- totalP - tradeQty
+      pricesS[i] <- spTemp
+    }
+  }
+}
+
+
+
+plot(spreadT, main = "AAPL vs. DELL spread (in-sample period)")
+abline(h = meanT, col = "red", lwd =2)
+abline(h = meanT + 1 * sdT, col = "blue", lwd = 2)
+abline(h = meanT - 1 * sdT, col = "blue", lwd = 2)
+points(xts(pricesB,index(spreadT)), col="green", cex=1.9, pch=19)
+points(xts(pricesS,index(spreadT)), col="red", cex=1.9, pch=19)
